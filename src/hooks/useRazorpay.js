@@ -1,18 +1,18 @@
+// useRazorpay.js
 import { useState, useCallback } from "react";
 import { createEnrollmentWithPayment } from "../firebase/services";
 import { RAZORPAY_KEY_ID } from "../firebase";
 
 /**
- * Custom hook to manage the Razorpay checkout process.
- * It loads the Razorpay SDK script and provides a payment initiation function.
- * @param {object} currentUser - The current Firebase user object (from useAuth).
- * @param {function} onPaymentSuccess - Callback function to run after successful payment confirmation.
+ * Custom hook to handle Razorpay payments
+ * @param {object} currentUser - Firebase user object
+ * @param {function} onPaymentSuccess - Callback after successful payment
  */
 const useRazorpay = (currentUser, onPaymentSuccess) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Dynamic Script Loading Function
+  // Load Razorpay SDK dynamically
   const loadScript = useCallback((src) => {
     return new Promise((resolve) => {
       const script = document.createElement("script");
@@ -23,7 +23,7 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
     });
   }, []);
 
-  // Main Payment Initiation Function
+  // Initialize Razorpay payment
   const initializePayment = useCallback(
     async (paymentDetails) => {
       if (!currentUser || !RAZORPAY_KEY_ID) {
@@ -34,20 +34,19 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
       setIsLoading(true);
       setError(null);
 
-      // Ensure Razorpay script is loaded
-      const res = await loadScript(
+      const sdkLoaded = await loadScript(
         "https://checkout.razorpay.com/v1/checkout.js"
       );
 
-      if (!res) {
+      if (!sdkLoaded) {
         setError(
-          "Razorpay SDK failed to load. Are you connected to the internet?"
+          "Razorpay SDK failed to load. Check your internet connection."
         );
         setIsLoading(false);
         return false;
       }
 
-      const amountInPaise = Math.round(paymentDetails.amount * 100);
+      const amountInPaise = Math.round(Number(paymentDetails.amount) * 100);
 
       const options = {
         key: RAZORPAY_KEY_ID,
@@ -60,7 +59,6 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
 
         handler: async (response) => {
           try {
-            // Create enrollment + payment record in Firestore using batch operation
             const result = await createEnrollmentWithPayment(
               {
                 userId: currentUser.uid,
@@ -87,17 +85,16 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
               }
             );
 
-            if (result.success) {
-              // Execute the success callback provided by the component
-              if (onPaymentSuccess) {
-                onPaymentSuccess(result.data.enrollmentId, paymentDetails.courseId);
-              }
-            } else {
-              setError("Payment successful, but failed to record enrollment. Please contact support.");
+            if (result.success && onPaymentSuccess) {
+              onPaymentSuccess(result.data.enrollmentId, paymentDetails.courseId);
+            } else if (!result.success) {
+              setError(
+                "Payment succeeded but enrollment recording failed. Contact support."
+              );
             }
           } catch (err) {
             setError(
-              "Payment successful, but failed to record enrollment. Please contact support immediately."
+              "Payment succeeded but enrollment recording failed. Contact support."
             );
             console.error("Firestore Enrollment Error:", err);
           } finally {
@@ -105,7 +102,6 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
           }
         },
 
-        // Pre-fill user details for better conversion
         prefill: {
           name: paymentDetails.billingInfo?.name || currentUser.displayName || "",
           email: paymentDetails.billingInfo?.email || currentUser.email || "",
@@ -117,10 +113,9 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
         },
       };
 
-      const rzp1 = new window.Razorpay(options);
+      const rzp = new window.Razorpay(options);
 
-      // Handle payment failure event
-      rzp1.on("payment.failed", function (response) {
+      rzp.on("payment.failed", function (response) {
         setError(
           `Payment failed. Code: ${response.error.code}. Reason: ${response.error.description}`
         );
@@ -128,8 +123,7 @@ const useRazorpay = (currentUser, onPaymentSuccess) => {
         setIsLoading(false);
       });
 
-      rzp1.open();
-      setIsLoading(false);
+      rzp.open();
       return true;
     },
     [currentUser, loadScript, onPaymentSuccess]
