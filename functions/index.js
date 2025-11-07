@@ -9,38 +9,60 @@ admin.initializeApp();
 
 const app = express();
 
+// const corsOptions = {
+//   origin: true,
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+//   optionsSuccessStatus: 200,
+// };
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://full-stack-certification-registrati.vercel.app',
+  'https://your-firebase-hosting-domain.web.app'
+];
+
 const corsOptions = {
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn('❌ CORS blocked:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   optionsSuccessStatus: 200,
 };
 
+
 // Basic CORS headers + early preflight handling to ensure OPTIONS succeeds before auth checks
-app.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
-  const requestHeaders = req.headers['access-control-request-headers'];
+// app.use((req, res, next) => {
+//   const origin = req.headers.origin || '*';
+//   const requestHeaders = req.headers['access-control-request-headers'];
 
-  res.set('Access-Control-Allow-Origin', origin);
-  res.set('Vary', 'Origin');
-  res.set('Access-Control-Allow-Credentials', 'true');
-  res.set('Access-Control-Allow-Methods', corsOptions.methods.join(','));
-  const allowedHeaders = requestHeaders
-    ? requestHeaders
-    : `${corsOptions.allowedHeaders.join(',')},authorization`;
+//   res.set('Access-Control-Allow-Origin', origin);
+//   res.set('Vary', 'Origin');
+//   res.set('Access-Control-Allow-Credentials', 'true');
+//   res.set('Access-Control-Allow-Methods', corsOptions.methods.join(','));
+//   const allowedHeaders = requestHeaders
+//     ? requestHeaders
+//     : `${corsOptions.allowedHeaders.join(',')},authorization`;
 
-  res.set('Access-Control-Allow-Headers', allowedHeaders);
-  res.set('Access-Control-Max-Age', '86400');
+//   res.set('Access-Control-Allow-Headers', allowedHeaders);
+//   res.set('Access-Control-Max-Age', '86400');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(corsOptions.optionsSuccessStatus).end();
-  }
+//   if (req.method === 'OPTIONS') {
+//     return res.status(corsOptions.optionsSuccessStatus).end();
+//   }
 
-  return next();
-});
+//   return next();
+// });
 
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 // Middleware to validate an Authorization: Bearer <idToken> header
@@ -55,7 +77,7 @@ async function verifyAuth(req, res, next) {
     req.auth = decoded;
     return next();
   } catch (error) {
-    console.error('verifyAuth error:', error && error.message ? error.message : error);
+    console.error('verifyAuth error:', error.message || error);
     return res.status(401).json({ success: false, error: 'Invalid auth token' });
   }
 }
